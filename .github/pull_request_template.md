@@ -33,6 +33,11 @@
 
 <!-- Describe how you tested your changes. Include example tracks or API responses if applicable. -->
 
+## Confirmation
+
+- [ ] I have verified that any new or modified lyrics source returns valid lyrics for real tracks
+- [ ] This PR is ready for review
+
 ## Related Issues
 
 <!-- Link any related issues using #issue-number. -->
