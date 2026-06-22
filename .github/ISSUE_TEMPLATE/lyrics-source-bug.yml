@@ -19,8 +19,16 @@ body:
         - betterlyrics (BetterLyrics)
         - unison (Unison)
         - Not sure / Multiple
+        - Other
     validations:
       required: true
+
+  - type: input
+    id: source-name-other
+    attributes:
+      label: Other Source Name
+      description: If you selected "Other" above, specify the source name here
+      placeholder: e.g. SomeCustomAPI
 
   - type: textarea
     id: description
