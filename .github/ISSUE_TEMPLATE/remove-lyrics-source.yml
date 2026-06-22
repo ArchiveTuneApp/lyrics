@@ -1,7 +1,7 @@
 name: Request Lyrics Source Removal
 description: Propose removing an existing lyrics provider from ArchiveTune's lyrics module
 title: "[Remove Source] "
-labels: [deprecation]
+labels: ["Remove Request"]
 body:
   - type: dropdown
     id: source-name

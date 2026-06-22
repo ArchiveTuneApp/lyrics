@@ -1,7 +1,7 @@
 name: Request New Lyrics Source
 description: Propose a new lyrics provider to be added to ArchiveTune's lyrics module
 title: "[New Source] "
-labels: [enhancement]
+labels: ["Source Request"]
 body:
   - type: input
     id: source-name
