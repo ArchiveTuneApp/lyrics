@@ -23,6 +23,7 @@ object TTMLParser {
         val providerRomanizedText: String? = null,
         val providerRomanizedWords: List<String>? = null,
         val providerRomanizedLanguage: String? = null,
+        val providerTranslationText: String? = null,
     )
 
     data class ParsedWord(
@@ -72,6 +73,7 @@ object TTMLParser {
             val doc = builder.parse(ttml.byteInputStream())
             val timingContext = readTimingContext(doc.documentElement)
             val transliterations = parseTransliterations(doc.documentElement)
+            val translations = parseTranslations(doc.documentElement)
 
             val divElements = doc.getElementsByTagName("*")
 
@@ -109,6 +111,7 @@ object TTMLParser {
                             }
                     val lineKey = readAttributeBySuffix(pElement, "key")
                     val transliteration = lineKey?.let(transliterations::get)
+                    val translation = lineKey?.let(translations::get)
 
                     val words = mutableListOf<ParsedWord>()
                     val lineText = StringBuilder()
@@ -273,6 +276,7 @@ object TTMLParser {
                                 providerRomanizedText = transliteration?.text,
                                 providerRomanizedWords = transliteration?.words,
                                 providerRomanizedLanguage = transliteration?.language,
+                                providerTranslationText = translation,
                             ),
                         )
                     }
@@ -310,6 +314,7 @@ object TTMLParser {
                             }
                     val lineKey = readAttributeBySuffix(pElement, "key")
                     val transliteration = lineKey?.let(transliterations::get)
+                    val translation = lineKey?.let(translations::get)
 
                     val words = mutableListOf<ParsedWord>()
                     val lineText = StringBuilder()
@@ -477,6 +482,7 @@ object TTMLParser {
                                 providerRomanizedText = transliteration?.text,
                                 providerRomanizedWords = transliteration?.words,
                                 providerRomanizedLanguage = transliteration?.language,
+                                providerTranslationText = translation,
                             ),
                         )
                     }
@@ -521,6 +527,30 @@ object TTMLParser {
         }
 
         return fallbackTransliterations.apply { putAll(latinTransliterations) }
+    }
+
+    private fun parseTranslations(root: Element): Map<String, String> {
+        val translations = linkedMapOf<String, String>()
+        val elements = root.getElementsByTagName("*")
+
+        for (i in 0 until elements.length) {
+            val translationElement = elements.item(i) as? Element ?: continue
+            if (!translationElement.tagName.endsWith("translation", ignoreCase = true)) continue
+
+            val textElements = translationElement.getElementsByTagName("*")
+            for (textIndex in 0 until textElements.length) {
+                val textElement = textElements.item(textIndex) as? Element ?: continue
+                if (!textElement.tagName.endsWith("text", ignoreCase = true)) continue
+
+                val lineKey = readAttributeBySuffix(textElement, "for") ?: continue
+                val translatedText =
+                    normalizeProvidedRomanization(textElement.textContent.orEmpty())
+                        ?: continue
+                translations[lineKey] = translatedText
+            }
+        }
+
+        return translations
     }
 
     private fun parseTransliterationLine(
