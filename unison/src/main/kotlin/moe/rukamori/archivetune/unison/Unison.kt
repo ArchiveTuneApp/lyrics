@@ -17,6 +17,7 @@ import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.Json
@@ -92,8 +93,27 @@ object Unison {
             logger?.invoke("Unison videoId raw response: $body")
             val parsed = runCatching { jsonFormat.decodeFromString<UnisonResponse>(body) }.getOrNull()
             parsed?.takeIf { it.success }?.data?.takeIf { it.lyrics.isNotBlank() }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger?.invoke("Unison videoId fetch error: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun fetchById(id: Long): UnisonEntry? {
+        return try {
+            val response = client.get("lyrics/$id")
+            logger?.invoke("Unison ID response status: ${response.status}")
+            if (!response.status.isSuccess()) return null
+            val body = response.bodyAsText()
+            logger?.invoke("Unison ID raw response: ${body.take(200)}")
+            val parsed = runCatching { jsonFormat.decodeFromString<UnisonResponse>(body) }.getOrNull()
+            parsed?.takeIf { it.success }?.data?.takeIf { it.lyrics.isNotBlank() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger?.invoke("Unison ID fetch error: ${e.message}")
             null
         }
     }
@@ -119,6 +139,8 @@ object Unison {
             logger?.invoke("Unison metadata raw response: $body")
             val parsed = runCatching { jsonFormat.decodeFromString<UnisonResponse>(body) }.getOrNull()
             parsed?.takeIf { it.success }?.data?.takeIf { it.lyrics.isNotBlank() }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger?.invoke("Unison metadata fetch error: ${e.message}")
             null
@@ -149,7 +171,17 @@ object Unison {
             val body = response.bodyAsText()
             logger?.invoke("Unison search raw response: ${body.take(200)}")
             val parsed = runCatching { jsonFormat.decodeFromString<UnisonSearchResponse>(body) }.getOrNull()
-            parsed?.takeIf { it.success }?.data?.filter { it.lyrics.isNotBlank() } ?: emptyList()
+            val summaries = parsed?.takeIf { it.success }?.data.orEmpty()
+            val entries = mutableListOf<UnisonEntry>()
+            for (summary in summaries) {
+                currentCoroutineContext().ensureActive()
+                if (entries.size >= MAX_SEARCH_RESULTS) break
+                val entry = summary.toEntry() ?: fetchById(summary.id)
+                if (entry != null) entries += entry
+            }
+            entries
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger?.invoke("Unison search fetch error: ${e.message}")
             emptyList()
