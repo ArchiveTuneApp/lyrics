@@ -91,12 +91,81 @@ object PaxsenixLyrics {
             else -> duration * 1000L // Likely seconds
         }
 
-    private fun cleanJsonLyrics(raw: String): String {
+    private val lyricsContentKeys =
+        listOf("lyrics", "lrc", "content", "text", "plainLyrics", "syncedLyrics", "line", "lyric")
+
+    private fun cleanJsonLyrics(raw: String): String? {
         val trimmed = raw.trim()
-        return if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-            runCatching { Json.decodeFromString<String>(trimmed) }.getOrDefault(trimmed)
-        } else {
-            trimmed
+        if (trimmed.isEmpty()) return null
+
+        val payload = runCatching { json.parseToJsonElement(trimmed) }.getOrNull()
+            ?: return trimmed
+        return extractLyrics(payload)
+    }
+
+    private fun extractLyrics(element: JsonElement): String? =
+        when (element) {
+            JsonNull -> null
+            is JsonPrimitive -> {
+                if (!element.isString) {
+                    null
+                } else {
+                    val value = element.content.trim()
+                    if (value.isEmpty()) {
+                        null
+                    } else {
+                        val nestedPayload = runCatching { json.parseToJsonElement(value) }.getOrNull()
+                        if (nestedPayload != null && nestedPayload !is JsonPrimitive) {
+                            extractLyrics(nestedPayload)
+                        } else {
+                            value
+                        }
+                    }
+                }
+            }
+            is JsonArray ->
+                element
+                    .mapNotNull(::extractLyrics)
+                    .joinToString("\n")
+                    .trim()
+                    .takeIf { it.isNotEmpty() }
+            is JsonObject -> {
+                if (element.isErrorPayload()) {
+                    null
+                } else {
+                    lyricsContentKeys
+                        .asSequence()
+                        .mapNotNull { key -> element[key]?.let(::extractLyrics) }
+                        .firstOrNull()
+                        ?: (element["metadata"] as? JsonObject)?.let { metadata ->
+                            lyricsContentKeys
+                                .asSequence()
+                                .mapNotNull { key -> metadata[key]?.let(::extractLyrics) }
+                                .firstOrNull()
+                        }
+                        ?: element["words"]?.let { words ->
+                            when (words) {
+                                is JsonArray ->
+                                    words
+                                        .mapNotNull(::extractLyrics)
+                                        .joinToString(" ")
+                                        .trim()
+                                        .takeIf { it.isNotEmpty() }
+                                else -> extractLyrics(words)
+                            }
+                        }
+                }
+            }
+        }
+
+    private fun JsonObject.isErrorPayload(): Boolean {
+        if ((this["isError"] as? JsonPrimitive)?.booleanOrNull == true) return true
+
+        return when (val error = this["error"]) {
+            null, JsonNull -> false
+            is JsonPrimitive -> error.booleanOrNull ?: error.content.trim().isNotEmpty()
+            is JsonArray -> error.isNotEmpty()
+            is JsonObject -> error.isNotEmpty()
         }
     }
 
@@ -364,7 +433,7 @@ object PaxsenixLyrics {
                         System.err.println("PaxsenixLyrics: Spotify lyrics status: ${lyricsResponse.status}")
                         if (lyricsResponse.status == HttpStatusCode.OK) {
                             val data = cleanJsonLyrics(lyricsResponse.body<String>())
-                            if (data.isNotBlank()) {
+                            if (data != null) {
                                 System.err.println("PaxsenixLyrics: SUCCESS from Spotify")
                                 return@runCatching data
                             }
@@ -415,11 +484,11 @@ object PaxsenixLyrics {
                     System.err.println("PaxsenixLyrics: YouTube lyrics status: ${lyricsResponse.status}")
                     if (lyricsResponse.status == HttpStatusCode.OK) {
                         val data = cleanJsonLyrics(lyricsResponse.body<String>())
-                        if (data.isNotBlank() && !data.contains("\"error\"") && !data.contains("\"isError\"")) {
+                        if (data != null) {
                             System.err.println("PaxsenixLyrics: SUCCESS from YouTube")
                             return@runCatching data
                         }
-                        System.err.println("PaxsenixLyrics: YouTube returned error: ${data.take(200)}")
+                        System.err.println("PaxsenixLyrics: YouTube returned error: ${data.orEmpty().take(200)}")
                     }
                 }
             }
@@ -446,11 +515,11 @@ object PaxsenixLyrics {
                 }
             if (mxmWord.status == HttpStatusCode.OK) {
                 val data = cleanJsonLyrics(mxmWord.body<String>())
-                if (data.isNotBlank() && !data.contains("\"error\"") && !data.contains("\"isError\"")) {
+                if (data != null) {
                     System.err.println("PaxsenixLyrics: SUCCESS from Musixmatch (Word)")
                     return@runCatching data
                 }
-                System.err.println("PaxsenixLyrics: Musixmatch (Word) returned server error: ${data.take(200)}")
+                System.err.println("PaxsenixLyrics: Musixmatch (Word) returned server error: ${data.orEmpty().take(200)}")
             }
 
             // Fallback to default
@@ -464,11 +533,11 @@ object PaxsenixLyrics {
             System.err.println("PaxsenixLyrics: Musixmatch lyrics status: ${mxmLyrics.status}")
             if (mxmLyrics.status == HttpStatusCode.OK) {
                 val data = cleanJsonLyrics(mxmLyrics.body<String>())
-                if (data.isNotBlank() && !data.contains("\"error\"") && !data.contains("\"isError\"")) {
+                if (data != null) {
                     System.err.println("PaxsenixLyrics: SUCCESS from Musixmatch")
                     return@runCatching data
                 }
-                System.err.println("PaxsenixLyrics: Musixmatch returned server error: ${data.take(200)}")
+                System.err.println("PaxsenixLyrics: Musixmatch returned server error: ${data.orEmpty().take(200)}")
             }
             throw IllegalStateException("Musixmatch lyrics unavailable")
         }
