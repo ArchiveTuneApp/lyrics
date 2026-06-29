@@ -98,14 +98,18 @@ object PaxsenixLyrics {
         val trimmed = raw.trim()
         if (trimmed.isEmpty()) return null
 
-        val payload = runCatching { json.parseToJsonElement(trimmed) }.getOrNull()
-            ?: return trimmed
+        val payload =
+            runCatching { json.parseToJsonElement(trimmed) }.getOrNull()
+                ?: return trimmed
         return extractLyrics(payload)
     }
 
     private fun extractLyrics(element: JsonElement): String? =
         when (element) {
-            JsonNull -> null
+            JsonNull -> {
+                null
+            }
+
             is JsonPrimitive -> {
                 if (!element.isString) {
                     null
@@ -123,12 +127,15 @@ object PaxsenixLyrics {
                     }
                 }
             }
-            is JsonArray ->
+
+            is JsonArray -> {
                 element
                     .mapNotNull(::extractLyrics)
                     .joinToString("\n")
                     .trim()
                     .takeIf { it.isNotEmpty() }
+            }
+
             is JsonObject -> {
                 if (element.isErrorPayload()) {
                     null
@@ -145,13 +152,17 @@ object PaxsenixLyrics {
                         }
                         ?: element["words"]?.let { words ->
                             when (words) {
-                                is JsonArray ->
+                                is JsonArray -> {
                                     words
                                         .mapNotNull(::extractLyrics)
                                         .joinToString(" ")
                                         .trim()
                                         .takeIf { it.isNotEmpty() }
-                                else -> extractLyrics(words)
+                                }
+
+                                else -> {
+                                    extractLyrics(words)
+                                }
                             }
                         }
                 }
